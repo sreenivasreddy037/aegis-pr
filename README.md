@@ -2,6 +2,7 @@
 
 [![ci](https://github.com/sreenivasreddy037/aegis-pr/actions/workflows/ci.yml/badge.svg)](https://github.com/sreenivasreddy037/aegis-pr/actions/workflows/ci.yml)
 ![Python 3.12](https://img.shields.io/badge/python-3.12-blue)
+![Tested on Linux, macOS and Windows](https://img.shields.io/badge/tested%20on-Linux%20%7C%20macOS%20%7C%20Windows-informational)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 **Autonomous multi-agent code review, AST impact graph, and regression verifier.**
@@ -198,8 +199,10 @@ These numbers were measured on an Apple Silicon laptop with `uv run aegispr benc
 | [Docker](https://docs.docker.com/get-docker/) | optional `docker compose` stack only | Docker Desktop / Engine with Compose v2 |
 | OpenAI API key | optional live-LLM mode only | without one, AegisPR runs in deterministic offline mode |
 
-Supported platforms are macOS, Linux and Windows. Sandbox CPU/memory rlimits apply on POSIX
-only; on Windows, prefer the Docker stack.
+CI runs the full test suite, the benchmark and the demo on **Linux, macOS and Windows** on every
+push. The sandbox's CPU and memory limits apply on Linux and macOS only (timeouts, network blocking
+and environment scrubbing work everywhere), so for reviewing untrusted diffs on Windows prefer the
+Docker stack.
 
 ```bash
 # 1. Clone and install (creates .venv with Python 3.12 and all dependencies)
@@ -247,6 +250,28 @@ Live LLM mode: `cp .env.example .env`, set `OPENAI_API_KEY`, and set `MOCK_LLM=f
 The first live run downloads the ~130 MB `bge-small` embedding model; set `EMBEDDING_BACKEND=hash`
 to skip it.
 
+### Windows (PowerShell)
+
+```powershell
+# 1. Install uv (Python is downloaded automatically). Reopen PowerShell afterwards.
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# 2. Clone and install (needs Git for Windows: https://git-scm.com/download/win)
+git clone https://github.com/sreenivasreddy037/aegis-pr.git
+cd aegis-pr
+uv sync
+
+# 3. Terminal demo, web UI (then open http://localhost:8000), tests
+uv run aegispr review --demo
+uv run aegispr serve
+uv run pytest
+```
+
+The `MOCK_LLM=true uv run …` prefix used above is Bash syntax. In PowerShell you don't need it,
+because without an API key AegisPR is offline automatically; to set it anyway, run
+`$env:MOCK_LLM="true"` first. Use Windows Terminal for correctly rendered tables. Docker Desktop
+(`docker compose up --build`) and WSL also work.
+
 ### Troubleshooting
 
 | Symptom | Fix |
@@ -256,6 +281,8 @@ to skip it.
 | Port 8000 already in use | `uv run aegispr serve --port 8080`, or change the port mapping in `docker-compose.yml`. |
 | `diff does not apply` (HTTP 422) | The diff must be generated against the exact repo state you pass as `--repo`. |
 | Reviews stay in `mode=mock` | `OPENAI_API_KEY` is unset or `MOCK_LLM=true`; check your `.env`. |
+| `MOCK_LLM=true : The term is not recognized` (PowerShell) | Drop the prefix, or run `$env:MOCK_LLM="true"` on its own line first. |
+| `uv` not found right after installing (Windows) | Close and reopen PowerShell so the new `PATH` is loaded. |
 
 ### What the demo finds
 
