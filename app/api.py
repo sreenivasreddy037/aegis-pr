@@ -6,6 +6,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from app import __version__
@@ -16,11 +18,14 @@ from app.schemas import PRReviewReport
 
 load_dotenv(override=False)
 
+WEB_DIR = Path(__file__).resolve().parent / "web"
+
 app = FastAPI(
     title="AegisPR",
     version=__version__,
     description="Autonomous multi-agent code review with AST impact graphs and sandbox-verified findings.",
 )
+app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
 
 
 class DiffReviewRequest(BaseModel):
@@ -42,6 +47,39 @@ def _resolve_repo(repo_path: str | None) -> Path:
             status_code=400, detail="repo_path must be a directory inside ALLOWED_REPO_ROOT"
         )
     return candidate
+
+
+class SampleDiff(BaseModel):
+    repo_path: str
+    title: str
+    diff: str
+
+
+@app.get("/", include_in_schema=False)
+def web_ui() -> FileResponse:
+    """Browser interface: paste a diff, run a review, explore the impact graph."""
+    return FileResponse(WEB_DIR / "index.html")
+
+
+@app.get("/repos")
+def list_repos() -> list[str]:
+    """Repositories the API may review: directories directly under ALLOWED_REPO_ROOT."""
+    root = get_settings().allowed_repo_root.resolve()
+    if not root.is_dir():
+        return []
+    return sorted(
+        p.name for p in root.iterdir() if p.is_dir() and not p.name.startswith((".", "_"))
+    )
+
+
+@app.get("/sample", response_model=SampleDiff)
+def sample_diff() -> SampleDiff:
+    """The bundled sample PR (three seeded bugs), used by the UI's "Load sample PR" button."""
+    return SampleDiff(
+        repo_path=FIXTURE_REPO.name,
+        title="Audience-bound tokens, status filter, optional split participants",
+        diff=FIXTURE_DIFF.read_text(),
+    )
 
 
 @app.get("/health")

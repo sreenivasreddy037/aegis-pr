@@ -214,3 +214,35 @@ def test_cli_rich_rendering():
         "end-to-end",
     ):
         assert needle in result.output
+
+
+# ----------------------------------------------------------------------------- Web UI
+
+
+def test_web_ui_is_served(client):
+    page = client.get("/")
+    assert page.status_code == 200 and "text/html" in page.headers["content-type"]
+    for needle in (
+        'id="review-form"',
+        'id="graph"',
+        'src="static/app.js"',
+        'href="static/app.css"',
+    ):
+        assert needle in page.text
+    js = client.get("/static/app.js")
+    assert js.status_code == 200 and "renderGraph" in js.text
+    assert client.get("/static/app.css").status_code == 200
+
+
+def test_web_ui_never_uses_inner_html(client):
+    # Report text comes from analysed (untrusted) code; the UI must only insert it as text.
+    js = client.get("/static/app.js").text
+    for sink in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write"):
+        assert sink not in js
+
+
+def test_repos_and_sample_endpoints(client):
+    assert client.get("/repos").json() == ["sample_repo"]
+    sample = client.get("/sample").json()
+    assert sample["repo_path"] == "sample_repo"
+    assert sample["diff"] == FIXTURE_DIFF.read_text()
