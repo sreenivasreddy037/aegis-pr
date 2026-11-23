@@ -39,6 +39,8 @@ jobs:
       - name: Smoke test the running container
         run: |
           curl -fsS localhost:8000/health
+          curl -fsS localhost:8000/ | grep -q 'id="review-form"'
+          curl -fsS localhost:8000/static/app.js | grep -q renderGraph
           curl -fsS localhost:8000/review/demo -o report.json
           python3 - <<'PY'
           import json

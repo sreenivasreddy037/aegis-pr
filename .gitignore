@@ -16,3 +16,5 @@ wheels/
 .deepeval*
 evals/results/
 *.db
+
+site/
