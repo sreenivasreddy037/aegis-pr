@@ -15,6 +15,11 @@ cannot ground in the code.
 uv run aegispr review --demo        # works offline, no API key
 ```
 
+<p align="center">
+  <img src="docs/demo-review.svg" alt="aegispr review --demo: AST impact graph, three verified findings, critic-filtered candidates and per-node latency" width="900">
+  <br><em>Real output of <code>aegispr review --demo</code> on the bundled sample PR (offline mode).</em>
+</p>
+
 ---
 
 ## Why naive diff-prompting fails
@@ -120,6 +125,10 @@ correct when category, file and enclosing symbol match.
 | Ablation: no impact graph (diff-only) | 75% | 100% | 0% | 0 / 3 | 40 ms | 558 ms |
 | Ablation: no sandbox (static only) | 75% | 100% | 0% | 0 / 3 | 36 ms | 68 ms |
 
+<p align="center">
+  <img src="docs/benchmark.svg" alt="aegispr benchmark: per-PR true/false positives and latency across 12 PRs" width="760">
+</p>
+
 These numbers were measured on an Apple Silicon laptop with `uv run aegispr benchmark`
 (`ABLATION=...` for the ablation rows). P95 is dominated by the sandbox runs.
 
@@ -159,6 +168,7 @@ MOCK_LLM=true uv run aegispr review --demo
 git diff main > change.diff
 uv run aegispr review --repo . --diff change.diff --fail-on high     # non-zero exit gates CI
 uv run aegispr review --repo . --diff change.diff --json -o report.json
+uv run aegispr review --demo --svg docs/demo-review.svg    # regenerate the README screenshot
 
 # 4. Benchmark & tests
 uv run aegispr benchmark

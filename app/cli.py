@@ -26,7 +26,8 @@ app = typer.Typer(
     no_args_is_help=True,
     add_completion=False,
 )
-console = Console()
+console = Console(record=True)  # record=True enables `--svg` terminal screenshots
+SVG_WIDTH = 120
 
 SEVERITY_STYLE = {
     Severity.CRITICAL: "bold white on red",
@@ -161,9 +162,12 @@ def review(
     fail_on: Severity = typer.Option(
         None, "--fail-on", help="Exit 1 if a finding has at least this severity."
     ),
+    svg: Path = typer.Option(None, "--svg", help="Save the rendered output as an SVG screenshot."),
 ) -> None:
     """Review a diff against a repository."""
     _bootstrap()
+    if svg:
+        console.width = SVG_WIDTH
     from app.graph.review_graph import run_review
 
     if demo:
@@ -187,6 +191,8 @@ def review(
         print(payload)
     else:
         render_report(report, diff_text, show_diff=not no_diff)
+        if svg:
+            console.save_svg(str(svg), title="aegispr review --demo" if demo else "aegispr review")
     if fail_on is not None and any(f.severity.rank >= fail_on.rank for f in report.findings):
         raise typer.Exit(code=1)
 
@@ -194,9 +200,12 @@ def review(
 @app.command()
 def benchmark(
     as_json: bool = typer.Option(False, "--json", help="Print metrics as JSON."),
+    svg: Path = typer.Option(None, "--svg", help="Save the rendered output as an SVG screenshot."),
 ) -> None:
     """Run the 12-PR benchmark and report recall, precision and latency."""
     _bootstrap()
+    if svg:
+        console.width = SVG_WIDTH
     from app.evaluation import run_benchmark
 
     result = run_benchmark()
@@ -224,6 +233,8 @@ def benchmark(
         f"clean-PR false alarms {s['clean_pr_false_alarms']}/{s['clean_prs']}  "
         f"P50 {s['p50_latency_ms']:.0f} ms  P95 {s['p95_latency_ms']:.0f} ms"
     )
+    if svg:
+        console.save_svg(str(svg), title="aegispr benchmark")
 
 
 @app.command()
