@@ -222,7 +222,11 @@ class PolicyStore:
         if client is not None:
             self.client = client
         elif self.settings.qdrant_mode == "remote":
-            self.client = QdrantClient(url=self.settings.qdrant_url, timeout=10)
+            # Only core APIs (sparse vectors, query_points + RRF fusion) are used, all of which
+            # exist since Qdrant 1.10, so skip the strict client/server version check.
+            self.client = QdrantClient(
+                url=self.settings.qdrant_url, timeout=10, check_compatibility=False
+            )
         else:
             self.client = QdrantClient(location=":memory:")
         # Per-index collection name avoids cross-talk between concurrent reviews on a server.

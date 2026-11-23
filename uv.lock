@@ -19,6 +19,7 @@ dependencies = [
     { name = "networkx" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
+    { name = "pytest" },
     { name = "python-dotenv" },
     { name = "qdrant-client" },
     { name = "rich" },
@@ -32,7 +33,6 @@ dependencies = [
 dev = [
     { name = "deepeval" },
     { name = "httpx" },
-    { name = "pytest" },
     { name = "ruff" },
 ]
 
@@ -45,6 +45,7 @@ requires-dist = [
     { name = "networkx", specifier = ">=3.3" },
     { name = "pydantic", specifier = ">=2.0" },
     { name = "pydantic-settings", specifier = ">=2.4" },
+    { name = "pytest", specifier = ">=8.3" },
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "qdrant-client", specifier = ">=1.12" },
     { name = "rich", specifier = ">=13.7" },
@@ -58,7 +59,6 @@ requires-dist = [
 dev = [
     { name = "deepeval", specifier = ">=1.0" },
     { name = "httpx", specifier = ">=0.27" },
-    { name = "pytest", specifier = ">=8.3" },
     { name = "ruff", specifier = ">=0.6" },
 ]
 

@@ -158,8 +158,11 @@ def run_pytest(
             stdout, stderr = proc.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:
             timed_out = True
+            killpg = getattr(os, "killpg", None)  # POSIX only; Windows falls back to kill()
             try:
-                os.killpg(proc.pid, signal.SIGKILL)
+                if killpg is None:
+                    raise ProcessLookupError
+                killpg(proc.pid, signal.SIGKILL)
             except (ProcessLookupError, PermissionError):
                 proc.kill()
             stdout, stderr = proc.communicate()
