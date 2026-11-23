@@ -41,7 +41,8 @@ socket.socket.connect = _blocked
 socket.socket.connect_ex = _blocked
 socket.create_connection = _blocked
 '''
-_PASSTHROUGH_ENV = ("PATH", "LANG", "LC_ALL", "SYSTEMROOT", "TZ")
+# SYSTEMROOT, WINDIR, COMSPEC and PATHEXT are required for Python to start on Windows.
+_PASSTHROUGH_ENV = ("PATH", "LANG", "LC_ALL", "TZ", "SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT")
 
 
 def _limits(cpu_seconds: int):
@@ -65,6 +66,11 @@ def _sandbox_env(root: Path) -> dict[str, str]:
         {
             "HOME": str(root),
             "TMPDIR": str(root / ".tmp"),
+            "TEMP": str(root / ".tmp"),  # Windows temp-dir variables
+            "TMP": str(root / ".tmp"),
+            "USERPROFILE": str(root),  # Windows equivalent of HOME
+            "PYTHONUTF8": "1",  # UTF-8 I/O in the child regardless of the OS code page
+            "PYTHONIOENCODING": "utf-8",
             "PYTHONPATH": str(root),
             "PYTHONNOUSERSITE": "1",
             "PYTHONHASHSEED": "0",
@@ -120,9 +126,11 @@ def run_pytest(
         else:
             root.mkdir()
         (root / ".tmp").mkdir(exist_ok=True)
-        (root / "pytest.ini").write_text("[pytest]\naddopts = -p no:cacheprovider\n")
-        (root / f"{_GUARD_MODULE}.py").write_text(_GUARD_SOURCE)
-        (root / test_filename).write_text(test_code)
+        (root / "pytest.ini").write_text(
+            "[pytest]\naddopts = -p no:cacheprovider\n", encoding="utf-8"
+        )
+        (root / f"{_GUARD_MODULE}.py").write_text(_GUARD_SOURCE, encoding="utf-8")
+        (root / test_filename).write_text(test_code, encoding="utf-8")
         junit = Path(tmp) / "junit.xml"
 
         cmd = [
@@ -150,6 +158,8 @@ def run_pytest(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             start_new_session=True,
             preexec_fn=_limits(timeout + 1) if os.name == "posix" else None,
         )

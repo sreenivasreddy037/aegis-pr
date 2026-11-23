@@ -30,7 +30,9 @@ class ReviewWorkspace:
 
     def file_lines(self, rel: str) -> list[str]:
         path = self.head_dir / rel
-        return path.read_text(errors="replace").splitlines() if path.exists() else []
+        return (
+            path.read_text(encoding="utf-8", errors="replace").splitlines() if path.exists() else []
+        )
 
 
 @contextmanager

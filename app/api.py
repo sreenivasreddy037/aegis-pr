@@ -78,7 +78,7 @@ def sample_diff() -> SampleDiff:
     return SampleDiff(
         repo_path=FIXTURE_REPO.name,
         title="Audience-bound tokens, status filter, optional split participants",
-        diff=FIXTURE_DIFF.read_text(),
+        diff=FIXTURE_DIFF.read_text(encoding="utf-8"),
     )
 
 
@@ -108,4 +108,6 @@ def review_diff(request: DiffReviewRequest) -> PRReviewReport:
 
 @app.get("/review/demo", response_model=PRReviewReport)
 def review_demo() -> PRReviewReport:
-    return run_review(FIXTURE_REPO, FIXTURE_DIFF.read_text(), settings=get_settings())
+    return run_review(
+        FIXTURE_REPO, FIXTURE_DIFF.read_text(encoding="utf-8"), settings=get_settings()
+    )

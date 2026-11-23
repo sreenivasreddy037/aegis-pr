@@ -38,7 +38,7 @@ def benchmark() -> BenchmarkResult:
             for c in result.cases
         ],
     }
-    (RESULTS_DIR / "latest.json").write_text(json.dumps(payload, indent=2))
+    (RESULTS_DIR / "latest.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return result
 
 

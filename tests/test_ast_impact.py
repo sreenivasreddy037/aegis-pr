@@ -85,7 +85,7 @@ def test_graph_resolves_calls_imports_and_di_references():
 
 
 def test_two_hop_impact_and_contract_violation_for_sample_pr():
-    with prepare_workspace(FIXTURE_REPO, FIXTURE_DIFF.read_text()) as ws:
+    with prepare_workspace(FIXTURE_REPO, FIXTURE_DIFF.read_text(encoding="utf-8")) as ws:
         impact, _, _ = compute_impact(ws.base_dir, ws.head_dir, ws.files, max_hops=2)
     modified = {n.symbol for n in impact.modified_symbols}
     assert {
@@ -151,15 +151,15 @@ def test_check_call_detects_arity_and_keyword_errors():
 
 
 def test_diff_round_trip_and_strict_context(tmp_path: Path):
-    files = parse_unified_diff(FIXTURE_DIFF.read_text())
+    files = parse_unified_diff(FIXTURE_DIFF.read_text(encoding="utf-8"))
     assert {f.path for f in files} == {"api_routes.py", "auth.py", "db.py", "payments.py"}
     db = next(f for f in files if f.path == "db.py")
-    patched = apply_file_diff((FIXTURE_REPO / "db.py").read_text(), db)
+    patched = apply_file_diff((FIXTURE_REPO / "db.py").read_text(encoding="utf-8"), db)
     assert 'f"WHERE user_id = {user_id}"' in patched
 
     with pytest.raises(PatchError, match="out of order/range"):
         apply_file_diff("completely different\ncontent\n", db)
-    shifted = "# a new header line\n" + (FIXTURE_REPO / "db.py").read_text()
+    shifted = "# a new header line\n" + (FIXTURE_REPO / "db.py").read_text(encoding="utf-8")
     with pytest.raises(PatchError, match="context mismatch"):
         apply_file_diff(shifted, db)
 
@@ -173,4 +173,4 @@ def test_patch_cannot_escape_workspace(tmp_path: Path):
 def test_new_file_diff_is_applied(tmp_path: Path):
     diff = "--- /dev/null\n+++ b/new_mod.py\n@@ -0,0 +1,2 @@\n+def f():\n+    return 1\n"
     apply_diff_to_tree(tmp_path, parse_unified_diff(diff))
-    assert (tmp_path / "new_mod.py").read_text() == "def f():\n    return 1\n"
+    assert (tmp_path / "new_mod.py").read_text(encoding="utf-8") == "def f():\n    return 1\n"

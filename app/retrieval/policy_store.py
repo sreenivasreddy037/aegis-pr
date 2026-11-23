@@ -205,7 +205,10 @@ def discover_repo_docs(repo: Path) -> list[dict]:
         if path.name.lower() in {"readme.md", "changelog.md"}:
             continue
         docs.extend(
-            chunk_markdown(path.read_text(errors="replace"), path.relative_to(repo).as_posix())
+            chunk_markdown(
+                path.read_text(encoding="utf-8", errors="replace"),
+                path.relative_to(repo).as_posix(),
+            )
         )
     return docs
 

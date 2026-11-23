@@ -1,0 +1,4 @@
+# Keep LF everywhere so fixtures, diffs and benchmark line numbers are identical on every OS.
+* text=auto eol=lf
+*.png binary
+*.svg text eol=lf

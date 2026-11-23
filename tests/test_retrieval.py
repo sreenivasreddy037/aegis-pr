@@ -20,7 +20,7 @@ def _repo_with_runbook(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
     shutil.copytree(FIXTURE_REPO, repo)
     (repo / "docs" / "runbooks").mkdir(parents=True)
-    (repo / "docs" / "runbooks" / "payments.md").write_text(RUNBOOK)
+    (repo / "docs" / "runbooks" / "payments.md").write_text(RUNBOOK, encoding="utf-8")
     return repo
 
 
@@ -32,7 +32,7 @@ def test_repo_docs_are_discovered_automatically(tmp_path):
 
 def test_new_runbook_is_used_by_the_next_review_without_reindexing(tmp_path):
     repo = _repo_with_runbook(tmp_path)
-    report = run_review(repo, FIXTURE_DIFF.read_text())
+    report = run_review(repo, FIXTURE_DIFF.read_text(encoding="utf-8"))
     used = {p.source for hits in report.impact.policies.values() for p in hits}
     assert "docs/runbooks/payments.md" in used
 

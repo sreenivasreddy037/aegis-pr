@@ -39,7 +39,7 @@ def render_diff(edits: list[Edit]) -> str:
     for e in edits:
         if e.file not in current:
             path = REPO / e.file
-            originals[e.file] = path.read_text() if path.exists() else None
+            originals[e.file] = path.read_text(encoding="utf-8") if path.exists() else None
             current[e.file] = originals[e.file] or ""
         if e.old is None:
             current[e.file] = e.new
@@ -443,9 +443,10 @@ def main() -> None:
             {"id": pr.id, "title": pr.title, "diff": render_diff(pr.edits), "expected": pr.expected}
         )
     OUT_JSON.write_text(
-        json.dumps({"repo": "fixtures/sample_repo", "prs": entries}, indent=2) + "\n"
+        json.dumps({"repo": "fixtures/sample_repo", "prs": entries}, indent=2) + "\n",
+        encoding="utf-8",
     )
-    OUT_DIFF.write_text(entries[0]["diff"])
+    OUT_DIFF.write_text(entries[0]["diff"], encoding="utf-8")
     print(f"wrote {len(entries)} PRs -> {OUT_JSON.relative_to(ROOT)}")
     print(f"wrote sample diff -> {OUT_DIFF.relative_to(ROOT)}")
 

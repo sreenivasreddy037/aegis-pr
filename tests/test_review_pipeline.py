@@ -31,7 +31,7 @@ CLEAN_DIFF = _benchmark_diff("PR-05")  # docstring + named constant refactor
 
 @pytest.fixture(scope="module")
 def demo_report():
-    return run_review(FIXTURE_REPO, FIXTURE_DIFF.read_text())
+    return run_review(FIXTURE_REPO, FIXTURE_DIFF.read_text(encoding="utf-8"))
 
 
 def test_demo_catches_all_three_seeded_bugs(demo_report):
@@ -98,7 +98,7 @@ class SlowLLM(MockReviewLLM):
 
 
 def test_agents_run_in_parallel():
-    r = run_review(FIXTURE_REPO, FIXTURE_DIFF.read_text(), llm=SlowLLM())
+    r = run_review(FIXTURE_REPO, FIXTURE_DIFF.read_text(encoding="utf-8"), llm=SlowLLM())
     agent_ms = [r.timings_ms[a] for a in AGENT_NODES]
     assert min(agent_ms) >= SlowLLM.DELAY * 1000
     # Sequential execution would take at least the sum of the agent times.
@@ -132,7 +132,7 @@ class HallucinatingLLM(MockReviewLLM):
 
 
 def test_critic_rejects_hallucinated_locations_and_llm_cannot_drop_verified():
-    r = run_review(FIXTURE_REPO, FIXTURE_DIFF.read_text(), llm=HallucinatingLLM())
+    r = run_review(FIXTURE_REPO, FIXTURE_DIFF.read_text(encoding="utf-8"), llm=HallucinatingLLM())
     assert any(
         "hallucinated location" in d.reason and d.finding.file_path == "does_not_exist.py"
         for d in r.dropped
@@ -170,7 +170,8 @@ def test_review_demo_endpoint(client):
 
 def test_review_diff_endpoint(client):
     resp = client.post(
-        "/review/diff", json={"diff": FIXTURE_DIFF.read_text(), "repo_path": "sample_repo"}
+        "/review/diff",
+        json={"diff": FIXTURE_DIFF.read_text(encoding="utf-8"), "repo_path": "sample_repo"},
     )
     assert resp.status_code == 200 and len(resp.json()["findings"]) == 3
 
@@ -245,4 +246,4 @@ def test_repos_and_sample_endpoints(client):
     assert client.get("/repos").json() == ["sample_repo"]
     sample = client.get("/sample").json()
     assert sample["repo_path"] == "sample_repo"
-    assert sample["diff"] == FIXTURE_DIFF.read_text()
+    assert sample["diff"] == FIXTURE_DIFF.read_text(encoding="utf-8")

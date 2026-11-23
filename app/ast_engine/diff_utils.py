@@ -145,11 +145,12 @@ def apply_diff_to_tree(root: Path, files: list[FileDiff]) -> None:
             continue
         target = _safe_join(root, fd.new_path or "")
         source = _safe_join(root, fd.old_path) if fd.old_path else None
-        old_text = source.read_text() if source and source.exists() else ""
+        old_text = source.read_text(encoding="utf-8") if source and source.exists() else ""
         if fd.old_path and (source is None or not source.exists()):
             raise PatchError(f"Diff modifies {fd.old_path}, which does not exist in the repo")
         new_text = apply_file_diff(old_text, fd)
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(new_text)
+        # newline="" keeps the patched file's line endings exactly as computed (no CRLF on Windows).
+        target.write_text(new_text, encoding="utf-8", newline="")
         if source is not None and source != target and source.exists():
             source.unlink()

@@ -92,7 +92,7 @@ def score(
 
 
 def load_benchmark(path: Path = BENCHMARK_PATH) -> dict:
-    return json.loads(path.read_text())
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def run_benchmark(settings: Settings | None = None, path: Path = BENCHMARK_PATH) -> BenchmarkResult:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import sys
@@ -38,7 +39,15 @@ SEVERITY_STYLE = {
 VERDICT_STYLE = {"approve": "bold green", "comment": "bold yellow", "request_changes": "bold red"}
 
 
+def _utf8_console() -> None:
+    """Windows consoles and pipes default to a legacy code page; force UTF-8 so ✔ and → print."""
+    for stream in (sys.stdout, sys.stderr):
+        with contextlib.suppress(AttributeError, ValueError):
+            stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+
+
 def _bootstrap() -> None:
+    _utf8_console()
     load_dotenv(override=False)
     reset_settings_cache()
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
@@ -171,11 +180,11 @@ def review(
     from app.graph.review_graph import run_review
 
     if demo:
-        repo, diff_text = FIXTURE_REPO, FIXTURE_DIFF.read_text()
+        repo, diff_text = FIXTURE_REPO, FIXTURE_DIFF.read_text(encoding="utf-8")
     else:
         if repo is None or diff is None:
             raise typer.BadParameter("Provide --repo and --diff, or use --demo.")
-        diff_text = sys.stdin.read() if str(diff) == "-" else diff.read_text()
+        diff_text = sys.stdin.read() if str(diff) == "-" else diff.read_text(encoding="utf-8")
 
     settings = get_settings()
     if not as_json:
@@ -186,7 +195,7 @@ def review(
     report = run_review(repo, diff_text, settings=settings)
     payload = report.model_dump_json(indent=2)
     if out:
-        out.write_text(payload)
+        out.write_text(payload, encoding="utf-8")
     if as_json:
         print(payload)
     else:

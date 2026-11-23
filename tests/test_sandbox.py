@@ -47,14 +47,14 @@ def test_environment_is_scrubbed(monkeypatch):
 def test_tests_run_on_a_private_copy(tmp_path):
     project = tmp_path / "proj"
     project.mkdir()
-    (project / "mod.py").write_text("VALUE = 1\n")
+    (project / "mod.py").write_text("VALUE = 1\n", encoding="utf-8")
     code = "from pathlib import Path\n\ndef test_mutate():\n    Path('mod.py').write_text('VALUE = 2\\n')\n"
     assert run_pytest(code, project).passed
-    assert (project / "mod.py").read_text() == "VALUE = 1\n"
+    assert (project / "mod.py").read_text(encoding="utf-8") == "VALUE = 1\n"
 
 
 def test_differential_edge_cases_prove_regression():
-    with prepare_workspace(FIXTURE_REPO, FIXTURE_DIFF.read_text()) as ws:
+    with prepare_workspace(FIXTURE_REPO, FIXTURE_DIFF.read_text(encoding="utf-8")) as ws:
         impact, _, head = compute_impact(ws.base_dir, ws.head_dir, ws.files)
         plans = {p.target: p for p in synthesize(impact.modified_symbols, head)}
         plan = plans["payments.calculate_split_fee"]

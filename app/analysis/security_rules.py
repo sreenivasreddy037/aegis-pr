@@ -243,7 +243,7 @@ def scan_file(
     path = head_dir / fd.new_path
     if not path.exists():
         return []
-    source = path.read_text(errors="replace")
+    source = path.read_text(encoding="utf-8", errors="replace")
     lines = source.splitlines()
     added = fd.added_line_numbers()
     if not added:
