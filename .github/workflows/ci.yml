@@ -34,3 +34,25 @@ jobs:
         run: docker compose config --quiet
       - name: Build image
         run: docker compose build aegispr
+      - name: Start stack (API + Qdrant server)
+        run: docker compose up -d --wait --wait-timeout 120
+      - name: Smoke test the running container
+        run: |
+          curl -fsS localhost:8000/health
+          curl -fsS localhost:8000/review/demo -o report.json
+          python3 - <<'PY'
+          import json
+          r = json.load(open("report.json"))
+          cats = sorted(f["category"] for f in r["findings"])
+          print(r["verdict"], cats, "errors:", r["errors"])
+          assert r["verdict"] == "request_changes", r["verdict"]
+          assert cats == ["breaking_change", "regression", "security"], cats
+          assert not r["errors"], r["errors"]
+          assert any(run["regressions"] for run in r["sandbox_runs"]), "sandbox did not execute"
+          PY
+      - name: Container logs on failure
+        if: failure()
+        run: docker compose logs
+      - name: Stop stack
+        if: always()
+        run: docker compose down -v
