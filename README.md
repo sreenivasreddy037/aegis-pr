@@ -1,5 +1,9 @@
 # AegisPR
 
+[![ci](https://github.com/sreenivasreddy037/aegis-pr/actions/workflows/ci.yml/badge.svg)](https://github.com/sreenivasreddy037/aegis-pr/actions/workflows/ci.yml)
+![Python 3.12](https://img.shields.io/badge/python-3.12-blue)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 **Autonomous multi-agent code review, AST impact graph, and regression verifier.**
 
 AegisPR reviews a pull request the way a senior engineer does. It works out what the change
@@ -129,8 +133,23 @@ These numbers were measured on an Apple Silicon laptop with `uv run aegispr benc
 
 ## Quickstart
 
+### Prerequisites
+
+| Requirement | Needed for | Install |
+|---|---|---|
+| [git](https://git-scm.com/downloads) | cloning | preinstalled on macOS/Linux |
+| [uv](https://docs.astral.sh/uv/getting-started/installation/) ≥ 0.5 | everything | macOS/Linux: `curl -LsSf https://astral.sh/uv/install.sh \| sh` · Windows: `powershell -c "irm https://astral.sh/uv/install.ps1 \| iex"` · or `pip install uv` |
+| Python 3.12 | everything | **nothing to do**: `uv sync` downloads it automatically if missing |
+| [Docker](https://docs.docker.com/get-docker/) | optional `docker compose` stack only | Docker Desktop / Engine with Compose v2 |
+| OpenAI API key | optional live-LLM mode only | without one, AegisPR runs in deterministic offline mode |
+
+Supported platforms are macOS, Linux and Windows. Sandbox CPU/memory rlimits apply on POSIX
+only; on Windows, prefer the Docker stack.
+
 ```bash
-# 1. Install (uv + Python 3.12)
+# 1. Clone and install (creates .venv with Python 3.12 and all dependencies)
+git clone https://github.com/sreenivasreddy037/aegis-pr.git
+cd aegis-pr
 uv sync
 
 # 2. Offline demo: catches all 3 seeded bugs in the sample PR
@@ -153,6 +172,18 @@ curl -s localhost:8000/review/demo | jq '.findings[] | {id, severity, title, fil
 ```
 
 Live LLM mode: `cp .env.example .env`, set `OPENAI_API_KEY`, and set `MOCK_LLM=false`.
+The first live run downloads the ~130 MB `bge-small` embedding model; set `EMBEDDING_BACKEND=hash`
+to skip it.
+
+### Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `uv: command not found` | Install uv (see Prerequisites), then open a new terminal so it's on your `PATH`. |
+| `aegispr: command not found` | Run it through uv: `uv run aegispr ...` (or `source .venv/bin/activate` first). |
+| Port 8000 already in use | `uv run aegispr serve --port 8080`, or change the port mapping in `docker-compose.yml`. |
+| `diff does not apply` (HTTP 422) | The diff must be generated against the exact repo state you pass as `--repo`. |
+| Reviews stay in `mode=mock` | `OPENAI_API_KEY` is unset or `MOCK_LLM=true`; check your `.env`. |
 
 ### What the demo finds
 
