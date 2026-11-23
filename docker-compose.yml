@@ -1,0 +1,31 @@
+services:
+  aegispr:
+    build: .
+    image: aegispr:latest
+    ports:
+      - "8000:8000"
+    environment:
+      MOCK_LLM: ${MOCK_LLM:-true}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      QDRANT_MODE: remote
+      QDRANT_URL: http://qdrant:6333
+      SANDBOX_TIMEOUT_SEC: ${SANDBOX_TIMEOUT_SEC:-10}
+    depends_on:
+      qdrant:
+        condition: service_started
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+volumes:
+  qdrant_data:
