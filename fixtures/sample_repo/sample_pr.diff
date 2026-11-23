@@ -1,0 +1,123 @@
+diff --git a/api_routes.py b/api_routes.py
+--- a/api_routes.py
++++ b/api_routes.py
+@@ -12,6 +12,7 @@
+ 
+ router = APIRouter()
+ AUTH_SECRET = os.environ.get("AUTH_SECRET", "")
++SERVICE_AUDIENCE = "payments-api"
+ 
+ 
+ def _bearer(authorization: str) -> str:
+@@ -27,15 +28,19 @@
+ 
+ @router.post("/session/refresh")
+ def refresh_session(authorization: str = Header(...)) -> dict:
+-    claims = verify_token(_bearer(authorization), AUTH_SECRET)
++    claims = verify_token(_bearer(authorization), AUTH_SECRET, audience=SERVICE_AUDIENCE)
+     return {"token": issue_token(claims.user_id, claims.scopes, AUTH_SECRET)}
+ 
+ 
+ @router.get("/transactions")
+-def list_transactions(limit: int = 50, user: TokenClaims = Depends(get_current_user)) -> list:
++def list_transactions(
++    limit: int = 50,
++    status: str | None = None,
++    user: TokenClaims = Depends(get_current_user),
++) -> list:
+     require_scope(user, "transactions:read")
+     conn = get_connection()
+-    return get_user_transactions(conn, user.user_id, limit=limit)
++    return get_user_transactions(conn, user.user_id, limit=limit, status=status)
+ 
+ 
+ @router.post("/payments/split")
+diff --git a/auth.py b/auth.py
+--- a/auth.py
++++ b/auth.py
+@@ -14,6 +14,7 @@
+ logger = logging.getLogger(__name__)
+ 
+ DEFAULT_TTL_SECONDS = 3600
++DEFAULT_AUDIENCE = "payments-api"
+ 
+ 
+ class TokenError(Exception):
+@@ -32,19 +33,26 @@
+ 
+ 
+ def issue_token(
+-    user_id: int, scopes: list[str], secret: str, ttl_seconds: int = DEFAULT_TTL_SECONDS
++    user_id: int,
++    scopes: list[str],
++    secret: str,
++    ttl_seconds: int = DEFAULT_TTL_SECONDS,
++    audience: str = DEFAULT_AUDIENCE,
+ ) -> str:
+     expires_at = int(time.time()) + ttl_seconds
+-    payload = f"{user_id}:{','.join(scopes)}:{expires_at}"
++    payload = f"{user_id}:{','.join(scopes)}:{expires_at}:{audience}"
+     return f"{payload}.{_sign(payload, secret)}"
+ 
+ 
+-def verify_token(token: str, secret: str) -> TokenClaims:
+-    """Verify an HMAC-signed token and return its claims."""
++def verify_token(token: str, secret: str, audience: str) -> TokenClaims:
++    """Verify an HMAC-signed token, enforcing the audience it was issued for."""
++    logger.debug("verifying token for audience %s", audience)
+     payload, _, signature = token.rpartition(".")
+     if not payload or not hmac.compare_digest(_sign(payload, secret), signature):
+         raise TokenError("invalid signature")
+-    user_id, scopes, expires_at = payload.split(":")
++    user_id, scopes, expires_at, token_audience = payload.split(":")
++    if token_audience != audience:
++        raise TokenError("audience mismatch")
+     if float(expires_at) < time.time():
+         raise TokenError("token expired")
+     return TokenClaims(
+diff --git a/db.py b/db.py
+--- a/db.py
++++ b/db.py
+@@ -36,10 +36,15 @@
+     return int(cursor.lastrowid or 0)
+ 
+ 
+-def get_user_transactions(conn: sqlite3.Connection, user_id: int, limit: int = 50) -> list[dict]:
+-    rows = conn.execute(
++def get_user_transactions(
++    conn: sqlite3.Connection, user_id: int, limit: int = 50, status: str | None = None
++) -> list[dict]:
++    query = (
+         "SELECT id, amount_cents, status, created_at FROM transactions "
+-        "WHERE user_id = ? ORDER BY id DESC LIMIT ?",
+-        (user_id, limit),
+-    ).fetchall()
++        f"WHERE user_id = {user_id}"
++    )
++    if status:
++        query += f" AND status = '{status}'"
++    query += f" ORDER BY id DESC LIMIT {limit}"
++    rows = conn.execute(query).fetchall()
+     return [dict(row) for row in rows]
+diff --git a/payments.py b/payments.py
+--- a/payments.py
++++ b/payments.py
+@@ -11,11 +11,14 @@
+ 
+ 
+ def calculate_split_fee(
+-    amount_cents: int, participants: int, fee_rate: float = PLATFORM_FEE_RATE
++    amount_cents: int,
++    participants: int | None = None,
++    fee_rate: float = PLATFORM_FEE_RATE,
+ ) -> int:
+-    """Return the per-participant platform fee in cents."""
+-    if participants <= 0:
+-        raise ValueError("participants must be a positive integer")
++    """Return the per-participant platform fee in cents.
++
++    ``participants`` is optional so single-payer checkouts can reuse this helper.
++    """
+     total_fee = max(round(amount_cents * fee_rate), MIN_FEE_CENTS)
+     return total_fee // participants
+ 

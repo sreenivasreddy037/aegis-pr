@@ -1,0 +1,145 @@
+{
+  "repo": "fixtures/sample_repo",
+  "prs": [
+    {
+      "id": "PR-01",
+      "title": "Audience-bound tokens, status filter for transactions, optional split participants",
+      "diff": "diff --git a/api_routes.py b/api_routes.py\n--- a/api_routes.py\n+++ b/api_routes.py\n@@ -12,6 +12,7 @@\n \n router = APIRouter()\n AUTH_SECRET = os.environ.get(\"AUTH_SECRET\", \"\")\n+SERVICE_AUDIENCE = \"payments-api\"\n \n \n def _bearer(authorization: str) -> str:\n@@ -27,15 +28,19 @@\n \n @router.post(\"/session/refresh\")\n def refresh_session(authorization: str = Header(...)) -> dict:\n-    claims = verify_token(_bearer(authorization), AUTH_SECRET)\n+    claims = verify_token(_bearer(authorization), AUTH_SECRET, audience=SERVICE_AUDIENCE)\n     return {\"token\": issue_token(claims.user_id, claims.scopes, AUTH_SECRET)}\n \n \n @router.get(\"/transactions\")\n-def list_transactions(limit: int = 50, user: TokenClaims = Depends(get_current_user)) -> list:\n+def list_transactions(\n+    limit: int = 50,\n+    status: str | None = None,\n+    user: TokenClaims = Depends(get_current_user),\n+) -> list:\n     require_scope(user, \"transactions:read\")\n     conn = get_connection()\n-    return get_user_transactions(conn, user.user_id, limit=limit)\n+    return get_user_transactions(conn, user.user_id, limit=limit, status=status)\n \n \n @router.post(\"/payments/split\")\ndiff --git a/auth.py b/auth.py\n--- a/auth.py\n+++ b/auth.py\n@@ -14,6 +14,7 @@\n logger = logging.getLogger(__name__)\n \n DEFAULT_TTL_SECONDS = 3600\n+DEFAULT_AUDIENCE = \"payments-api\"\n \n \n class TokenError(Exception):\n@@ -32,19 +33,26 @@\n \n \n def issue_token(\n-    user_id: int, scopes: list[str], secret: str, ttl_seconds: int = DEFAULT_TTL_SECONDS\n+    user_id: int,\n+    scopes: list[str],\n+    secret: str,\n+    ttl_seconds: int = DEFAULT_TTL_SECONDS,\n+    audience: str = DEFAULT_AUDIENCE,\n ) -> str:\n     expires_at = int(time.time()) + ttl_seconds\n-    payload = f\"{user_id}:{','.join(scopes)}:{expires_at}\"\n+    payload = f\"{user_id}:{','.join(scopes)}:{expires_at}:{audience}\"\n     return f\"{payload}.{_sign(payload, secret)}\"\n \n \n-def verify_token(token: str, secret: str) -> TokenClaims:\n-    \"\"\"Verify an HMAC-signed token and return its claims.\"\"\"\n+def verify_token(token: str, secret: str, audience: str) -> TokenClaims:\n+    \"\"\"Verify an HMAC-signed token, enforcing the audience it was issued for.\"\"\"\n+    logger.debug(\"verifying token for audience %s\", audience)\n     payload, _, signature = token.rpartition(\".\")\n     if not payload or not hmac.compare_digest(_sign(payload, secret), signature):\n         raise TokenError(\"invalid signature\")\n-    user_id, scopes, expires_at = payload.split(\":\")\n+    user_id, scopes, expires_at, token_audience = payload.split(\":\")\n+    if token_audience != audience:\n+        raise TokenError(\"audience mismatch\")\n     if float(expires_at) < time.time():\n         raise TokenError(\"token expired\")\n     return TokenClaims(\ndiff --git a/db.py b/db.py\n--- a/db.py\n+++ b/db.py\n@@ -36,10 +36,15 @@\n     return int(cursor.lastrowid or 0)\n \n \n-def get_user_transactions(conn: sqlite3.Connection, user_id: int, limit: int = 50) -> list[dict]:\n-    rows = conn.execute(\n+def get_user_transactions(\n+    conn: sqlite3.Connection, user_id: int, limit: int = 50, status: str | None = None\n+) -> list[dict]:\n+    query = (\n         \"SELECT id, amount_cents, status, created_at FROM transactions \"\n-        \"WHERE user_id = ? ORDER BY id DESC LIMIT ?\",\n-        (user_id, limit),\n-    ).fetchall()\n+        f\"WHERE user_id = {user_id}\"\n+    )\n+    if status:\n+        query += f\" AND status = '{status}'\"\n+    query += f\" ORDER BY id DESC LIMIT {limit}\"\n+    rows = conn.execute(query).fetchall()\n     return [dict(row) for row in rows]\ndiff --git a/payments.py b/payments.py\n--- a/payments.py\n+++ b/payments.py\n@@ -11,11 +11,14 @@\n \n \n def calculate_split_fee(\n-    amount_cents: int, participants: int, fee_rate: float = PLATFORM_FEE_RATE\n+    amount_cents: int,\n+    participants: int | None = None,\n+    fee_rate: float = PLATFORM_FEE_RATE,\n ) -> int:\n-    \"\"\"Return the per-participant platform fee in cents.\"\"\"\n-    if participants <= 0:\n-        raise ValueError(\"participants must be a positive integer\")\n+    \"\"\"Return the per-participant platform fee in cents.\n+\n+    ``participants`` is optional so single-payer checkouts can reuse this helper.\n+    \"\"\"\n     total_fee = max(round(amount_cents * fee_rate), MIN_FEE_CENTS)\n     return total_fee // participants\n \n",
+      "expected": [
+        {
+          "category": "breaking_change",
+          "file": "api_routes.py",
+          "symbol": "get_current_user"
+        },
+        {
+          "category": "security",
+          "file": "db.py",
+          "symbol": "get_user_transactions"
+        },
+        {
+          "category": "regression",
+          "file": "payments.py",
+          "symbol": "calculate_split_fee"
+        }
+      ]
+    },
+    {
+      "id": "PR-02",
+      "title": "Add status lookup helper (SQL injection via % formatting)",
+      "diff": "diff --git a/db.py b/db.py\n--- a/db.py\n+++ b/db.py\n@@ -36,6 +36,13 @@\n     return int(cursor.lastrowid or 0)\n \n \n+def find_transactions_by_status(conn: sqlite3.Connection, status: str) -> list[dict]:\n+    rows = conn.execute(\n+        \"SELECT id, user_id, amount_cents FROM transactions WHERE status = '%s'\" % status\n+    ).fetchall()\n+    return [dict(row) for row in rows]\n+\n+\n def get_user_transactions(conn: sqlite3.Connection, user_id: int, limit: int = 50) -> list[dict]:\n     rows = conn.execute(\n         \"SELECT id, amount_cents, status, created_at FROM transactions \"\n",
+      "expected": [
+        {
+          "category": "security",
+          "file": "db.py",
+          "symbol": "find_transactions_by_status"
+        }
+      ]
+    },
+    {
+      "id": "PR-03",
+      "title": "Multi-tenant transactions (new required parameter breaks route)",
+      "diff": "diff --git a/db.py b/db.py\n--- a/db.py\n+++ b/db.py\n@@ -36,10 +36,12 @@\n     return int(cursor.lastrowid or 0)\n \n \n-def get_user_transactions(conn: sqlite3.Connection, user_id: int, limit: int = 50) -> list[dict]:\n+def get_user_transactions(\n+    conn: sqlite3.Connection, user_id: int, tenant_id: int, limit: int = 50\n+) -> list[dict]:\n     rows = conn.execute(\n         \"SELECT id, amount_cents, status, created_at FROM transactions \"\n-        \"WHERE user_id = ? ORDER BY id DESC LIMIT ?\",\n-        (user_id, limit),\n+        \"WHERE user_id = ? AND tenant_id = ? ORDER BY id DESC LIMIT ?\",\n+        (user_id, tenant_id, limit),\n     ).fetchall()\n     return [dict(row) for row in rows]\n",
+      "expected": [
+        {
+          "category": "breaking_change",
+          "file": "api_routes.py",
+          "symbol": "list_transactions"
+        }
+      ]
+    },
+    {
+      "id": "PR-04",
+      "title": "Simplify average_ticket (drops zero guard)",
+      "diff": "diff --git a/payments.py b/payments.py\n--- a/payments.py\n+++ b/payments.py\n@@ -21,9 +21,7 @@\n \n \n def average_ticket(total_cents: int, count: int) -> int:\n-    \"\"\"Average transaction size in cents; 0 when there are no transactions.\"\"\"\n-    if count == 0:\n-        return 0\n+    \"\"\"Average transaction size in cents.\"\"\"\n     return total_cents // count\n \n \n",
+      "expected": [
+        {
+          "category": "regression",
+          "file": "payments.py",
+          "symbol": "average_ticket"
+        }
+      ]
+    },
+    {
+      "id": "PR-05",
+      "title": "Clean refactor: named constant and docstring for format_amount",
+      "diff": "diff --git a/payments.py b/payments.py\n--- a/payments.py\n+++ b/payments.py\n@@ -36,5 +36,9 @@\n     return [record_transaction(conn, payer, share, status=\"settled\") for payer in payer_ids]\n \n \n+CENTS_PER_UNIT = 100\n+\n+\n def format_amount(amount_cents: int) -> str:\n-    return f\"${amount_cents / 100:,.2f}\"\n+    \"\"\"Render integer cents as a dollar string, e.g. 123456 -> \"$1,234.56\".\"\"\"\n+    return f\"${amount_cents / CENTS_PER_UNIT:,.2f}\"\n",
+      "expected": []
+    },
+    {
+      "id": "PR-06",
+      "title": "Local dev convenience: fallback signing secret (hardcoded credential)",
+      "diff": "diff --git a/api_routes.py b/api_routes.py\n--- a/api_routes.py\n+++ b/api_routes.py\n@@ -11,7 +11,7 @@\n from payments import calculate_split_fee, format_amount, settle_split\n \n router = APIRouter()\n-AUTH_SECRET = os.environ.get(\"AUTH_SECRET\", \"\")\n+AUTH_SECRET = os.environ.get(\"AUTH_SECRET\", \"sk_live_51HxQe2LkP9vR3tYzWq\")\n \n \n def _bearer(authorization: str) -> str:\n",
+      "expected": [
+        {
+          "category": "security",
+          "file": "api_routes.py"
+        }
+      ]
+    },
+    {
+      "id": "PR-07",
+      "title": "Clean: optional currency for format_amount (backwards compatible)",
+      "diff": "diff --git a/payments.py b/payments.py\n--- a/payments.py\n+++ b/payments.py\n@@ -36,5 +36,6 @@\n     return [record_transaction(conn, payer, share, status=\"settled\") for payer in payer_ids]\n \n \n-def format_amount(amount_cents: int) -> str:\n-    return f\"${amount_cents / 100:,.2f}\"\n+def format_amount(amount_cents: int, currency: str = \"USD\") -> str:\n+    symbol = \"$\" if currency == \"USD\" else f\"{currency} \"\n+    return f\"{symbol}{amount_cents / 100:,.2f}\"\n",
+      "expected": []
+    },
+    {
+      "id": "PR-08",
+      "title": "Nightly report export (shell injection)",
+      "diff": "diff --git a/reports.py b/reports.py\n--- /dev/null\n+++ b/reports.py\n@@ -0,0 +1,11 @@\n+\"\"\"Nightly export of settled transactions.\"\"\"\n+\n+from __future__ import annotations\n+\n+import subprocess\n+\n+\n+def export_report(day: str, bucket: str) -> int:\n+    archive = f\"/tmp/{day}.sql.gz\"\n+    cmd = f\"sqlite3 payments.db .dump | gzip > {archive} && aws s3 cp {archive} s3://{bucket}/\"\n+    return subprocess.call(cmd, shell=True)\n",
+      "expected": [
+        {
+          "category": "security",
+          "file": "reports.py",
+          "symbol": "export_report"
+        }
+      ]
+    },
+    {
+      "id": "PR-09",
+      "title": "Rename record_transaction(status=) to state= (breaks keyword caller)",
+      "diff": "diff --git a/db.py b/db.py\n--- a/db.py\n+++ b/db.py\n@@ -26,11 +26,11 @@\n \n \n def record_transaction(\n-    conn: sqlite3.Connection, user_id: int, amount_cents: int, status: str = \"pending\"\n+    conn: sqlite3.Connection, user_id: int, amount_cents: int, state: str = \"pending\"\n ) -> int:\n     cursor = conn.execute(\n         \"INSERT INTO transactions (user_id, amount_cents, status) VALUES (?, ?, ?)\",\n-        (user_id, amount_cents, status),\n+        (user_id, amount_cents, state),\n     )\n     conn.commit()\n     return int(cursor.lastrowid or 0)\n",
+      "expected": [
+        {
+          "category": "breaking_change",
+          "file": "payments.py",
+          "symbol": "settle_split"
+        }
+      ]
+    },
+    {
+      "id": "PR-10",
+      "title": "Gross-up discount helper (division by zero at percent=100)",
+      "diff": "diff --git a/payments.py b/payments.py\n--- a/payments.py\n+++ b/payments.py\n@@ -36,5 +36,12 @@\n     return [record_transaction(conn, payer, share, status=\"settled\") for payer in payer_ids]\n \n \n+def apply_discount(amount_cents: int, percent: int) -> int:\n+    \"\"\"Amount to charge so that after `percent`% off the merchant still nets `amount_cents`.\"\"\"\n+    if percent < 0:\n+        raise ValueError(\"percent must be non-negative\")\n+    return amount_cents * 100 // (100 - percent)\n+\n+\n def format_amount(amount_cents: int) -> str:\n     return f\"${amount_cents / 100:,.2f}\"\n",
+      "expected": [
+        {
+          "category": "regression",
+          "file": "payments.py",
+          "symbol": "apply_discount"
+        }
+      ]
+    },
+    {
+      "id": "PR-11",
+      "title": "Clean: structured logging in settle_split",
+      "diff": "diff --git a/payments.py b/payments.py\n--- a/payments.py\n+++ b/payments.py\n@@ -2,12 +2,15 @@\n \n from __future__ import annotations\n \n+import logging\n import sqlite3\n \n from db import record_transaction\n \n PLATFORM_FEE_RATE = 0.029\n MIN_FEE_CENTS = 30\n+\n+logger = logging.getLogger(__name__)\n \n \n def calculate_split_fee(\n@@ -31,6 +34,7 @@\n     \"\"\"Charge every payer their share plus the platform fee and persist the transactions.\"\"\"\n     if not payer_ids:\n         raise ValueError(\"at least one payer is required\")\n+    logger.info(\"settling split for %d payers\", len(payer_ids))\n     fee = calculate_split_fee(amount_cents, len(payer_ids))\n     share = amount_cents // len(payer_ids) + fee\n     return [record_transaction(conn, payer, share, status=\"settled\") for payer in payer_ids]\n",
+      "expected": []
+    },
+    {
+      "id": "PR-12",
+      "title": "Keyword-only scopes for issue_token + dynamic fee rules (eval)",
+      "diff": "diff --git a/auth.py b/auth.py\n--- a/auth.py\n+++ b/auth.py\n@@ -32,7 +32,7 @@\n \n \n def issue_token(\n-    user_id: int, scopes: list[str], secret: str, ttl_seconds: int = DEFAULT_TTL_SECONDS\n+    user_id: int, secret: str, *, scopes: list[str], ttl_seconds: int = DEFAULT_TTL_SECONDS\n ) -> str:\n     expires_at = int(time.time()) + ttl_seconds\n     payload = f\"{user_id}:{','.join(scopes)}:{expires_at}\"\ndiff --git a/payments.py b/payments.py\n--- a/payments.py\n+++ b/payments.py\n@@ -36,5 +36,10 @@\n     return [record_transaction(conn, payer, share, status=\"settled\") for payer in payer_ids]\n \n \n+def parse_fee_rule(expression: str) -> float:\n+    \"\"\"Evaluate a merchant-configured fee rule such as \"0.029 + 0.001\".\"\"\"\n+    return float(eval(expression))\n+\n+\n def format_amount(amount_cents: int) -> str:\n     return f\"${amount_cents / 100:,.2f}\"\n",
+      "expected": [
+        {
+          "category": "breaking_change",
+          "file": "api_routes.py",
+          "symbol": "refresh_session"
+        },
+        {
+          "category": "security",
+          "file": "payments.py",
+          "symbol": "parse_fee_rule"
+        }
+      ]
+    }
+  ]
+}
